@@ -30,7 +30,7 @@ Godot Engine `.pck` / `.exe` unpacking script, supporting **Godot 3** (PCK v1) a
 ## Quick Start
 
 ```bash
-git clone https://github.com/Aionfatedio/example.git
+git clone https://github.com/Aionfatedio/Godot-unpacker.git
 cd Godot-unpacker
 
 # game folder
