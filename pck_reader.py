@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Godot PCK 文件解包模块 - 支持 PCK v1 (Godot 3) 和 v2 (Godot 4)"""
-
 import struct
 import os
 import hashlib
@@ -10,7 +6,7 @@ from dataclasses import dataclass
 from typing import List, Optional, BinaryIO
 
 GDPC_MAGIC = b"GDPC"
-PCK_HEADER_SIZE = 4 + 4 * 4  # magic + version + major + minor + patch
+PCK_HEADER_SIZE = 4 + 4 * 4  
 
 
 @dataclass
@@ -35,16 +31,13 @@ class PCKHeader:
 
 
 class PCKReader:
-    """读取和解包 Godot PCK 文件"""
-
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)
         self.header: Optional[PCKHeader] = None
         self.entries: List[PCKFileEntry] = []
-        self._pck_offset = 0  # PCK 数据在文件中的起始偏移（用于嵌入式 PCK）
+        self._pck_offset = 0  
 
     def open(self) -> bool:
-        """打开并解析 PCK 文件，返回是否成功"""
         if not self.file_path.exists():
             print(f"错误: 文件不存在: {self.file_path}")
             return False
@@ -56,23 +49,18 @@ class PCKReader:
                 f.seek(0)
                 return self._parse(f)
 
-            # 尝试检测 EXE 中的嵌入式 PCK
             pck_off = self._find_embedded_pck(f)
             if pck_off is not None:
                 self._pck_offset = pck_off
                 f.seek(pck_off)
                 return self._parse(f)
 
-        print(f"错误: 未找到有效的 PCK 数据: {self.file_path}")
         return False
 
     def _find_embedded_pck(self, f: BinaryIO) -> Optional[int]:
-        """在 EXE 文件中搜索嵌入的 PCK 数据"""
         f.seek(0, 2)
         file_size = f.tell()
 
-        # 方法1: 从文件末尾向前搜索 GDPC 标记
-        # Godot 在 EXE 末尾写入: [PCK数据] [PCK大小:8字节] [GDPC:4字节]
         if file_size >= 12:
             f.seek(file_size - 4)
             end_magic = f.read(4)
@@ -85,8 +73,7 @@ class PCKReader:
                     if f.read(4) == GDPC_MAGIC:
                         return pck_start
 
-        # 方法2: 扫描文件查找 GDPC 签名（较慢但更可靠）
-        scan_chunk = 1024 * 1024  # 1MB 块
+        scan_chunk = 1024 * 1024  
         f.seek(0)
         offset = 0
         while offset < file_size:
@@ -95,7 +82,6 @@ class PCKReader:
             pos = chunk.find(GDPC_MAGIC)
             if pos != -1:
                 candidate = offset + pos
-                # 验证头部有效性
                 f.seek(candidate)
                 test_magic = f.read(4)
                 if test_magic == GDPC_MAGIC:
@@ -108,9 +94,7 @@ class PCKReader:
         return None
 
     def _parse(self, f: BinaryIO) -> bool:
-        """解析 PCK 头部和文件表"""
         try:
-            # 读取头部
             magic = f.read(4)
             if magic != GDPC_MAGIC:
                 return False
@@ -122,13 +106,20 @@ class PCKReader:
 
             flags = 0
             file_base = 0
+            index_offset = None
 
             if pack_version >= 2:
                 flags = struct.unpack("<I", f.read(4))[0]
                 file_base = struct.unpack("<Q", f.read(8))[0]
 
-            # 跳过保留字段 (16 * uint32)
+            if pack_version >= 3:
+                index_offset = struct.unpack("<Q", f.read(8))[0]
+
             f.read(16 * 4)
+
+            # PCK v3: 索引表在文件末尾，需要 seek 到索引偏移处
+            if index_offset is not None:
+                f.seek(index_offset + self._pck_offset)
 
             file_count = struct.unpack("<I", f.read(4))[0]
 
@@ -142,12 +133,10 @@ class PCKReader:
                 file_count=file_count,
             )
 
-            # 读取文件表
             self.entries = []
             for _ in range(file_count):
                 path_len = struct.unpack("<I", f.read(4))[0]
                 path_bytes = f.read(path_len)
-                # 跳过对齐填充
                 pad = (4 - path_len % 4) % 4
                 if pad:
                     f.read(pad)
@@ -161,7 +150,6 @@ class PCKReader:
                 if pack_version >= 2:
                     entry_flags = struct.unpack("<I", f.read(4))[0]
 
-                # 应用 file_base 偏移
                 actual_offset = offset + file_base + self._pck_offset
 
                 entry = PCKFileEntry(
@@ -177,11 +165,10 @@ class PCKReader:
             return True
 
         except (struct.error, OSError) as e:
-            print(f"解析错误: {e}")
+            print(f"错误: {e}")
             return False
 
     def extract_all(self, output_dir: str, callback=None) -> int:
-        """解包所有文件到指定目录，返回成功数量"""
         output_path = Path(output_dir)
         success = 0
 
@@ -202,14 +189,11 @@ class PCKReader:
         return success
 
     def extract_file(self, entry: PCKFileEntry, output_dir: str) -> bool:
-        """提取单个文件"""
         with open(self.file_path, "rb") as f:
             return self._extract_entry(f, entry, Path(output_dir))
 
     def _extract_entry(self, f: BinaryIO, entry: PCKFileEntry, output_dir: Path) -> bool:
-        """提取单个文件条目"""
         try:
-            # 构建输出路径（移除 res:// 前缀）
             rel_path = entry.path
             if rel_path.startswith("res://"):
                 rel_path = rel_path[6:]
@@ -228,7 +212,6 @@ class PCKReader:
             return False
 
     def get_info(self) -> str:
-        """返回 PCK 信息摘要"""
         if not self.header:
             return "未打开"
         h = self.header

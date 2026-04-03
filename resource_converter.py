@@ -1,13 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Godot 资源格式转换模块 - 将 .ctex/.oggvorbisstr/.sample 转换为原始格式"""
-
 import struct
 from typing import Optional, Tuple, List, Any
 
 # ============================================================
-# Godot 二进制资源格式 (RSRC) 变体类型常量
-# 注意: 这些 ID 与运行时 Variant::Type 不同
+# Godot 二进制资源格式 (RSRC) 变体类型常量。这些 ID 与运行时 Variant::Type 不同
 # ============================================================
 VT_NIL = 1
 VT_BOOL = 2
@@ -45,27 +40,22 @@ VT_VECTOR4 = 49
 VT_VECTOR4I = 50
 VT_PROJECTION = 51
 
-# 某些 Godot 版本中 PACKED_INT64_ARRAY 使用不同 ID
 VT_PACKED_INT64_ARRAY_ALT = 48
 
-# OBJECT 子类型
 OBJ_EMPTY = 0
 OBJ_EXTERNAL = 1
 OBJ_INTERNAL = 2
 OBJ_EXTERNAL_INDEX = 3
 
-RESERVED_FIELDS = 11  # RSRC 头部保留字段数量
+RESERVED_FIELDS_V2 = 14  # Godot 3 (format_version < 3)
+RESERVED_FIELDS_V3 = 11  # Godot 4 (format_version >= 3)
 
-# 格式标志
 FORMAT_FLAG_NAMED_SCENE_IDS = 1
 FORMAT_FLAG_UIDS = 2
 FORMAT_FLAG_REAL_IS_DOUBLE = 4
 FORMAT_FLAG_SCRIPT_CLASS = 8
 
 
-# ============================================================
-# OGG CRC32 (与标准 CRC32 多项式不同)
-# ============================================================
 _ogg_crc_table = None
 
 
@@ -90,13 +80,7 @@ def ogg_crc(data: bytes) -> int:
         crc = ((_ogg_crc_table[((crc >> 24) & 0xFF) ^ b]) ^ (crc << 8)) & 0xFFFFFFFF
     return crc
 
-
-# ============================================================
-# RSRC 二进制资源解析器
-# ============================================================
 class RSRCParser:
-    """解析 Godot 二进制资源文件 (.res / .tres / .oggvorbisstr / .sample)"""
-
     def __init__(self, data: bytes):
         self.data = data
         self.off = 0
@@ -158,7 +142,6 @@ class RSRCParser:
         return s.rstrip("\x00")
 
     def _read_variant(self) -> Any:
-        """解析一个 Variant 值"""
         vtype_raw = self._u32()
         vtype = vtype_raw & 0xFFFF
 
@@ -169,7 +152,7 @@ class RSRCParser:
             return bool(self._u32())
 
         elif vtype == VT_INT:
-            if vtype_raw & 0x10000:  # 64-bit 标记
+            if vtype_raw & 0x10000:  
                 return self._i64()
             return self._i32()
 
@@ -177,7 +160,7 @@ class RSRCParser:
             return self._i64()
 
         elif vtype == VT_FLOAT:
-            if vtype_raw & 0x10000:  # 64-bit 标记
+            if vtype_raw & 0x10000:  
                 return self._f64()
             return self._f32()
 
@@ -188,10 +171,8 @@ class RSRCParser:
             return self._read_string()
 
         elif vtype == VT_NODE_PATH:
-            # NodePath: 先读标志和名称部分
             name_count = self._u32()
             if name_count & 0x80000000:
-                # 新格式
                 name_count &= 0x7FFFFFFF
                 subname_count = self._u32()
                 flags = self._u32()
@@ -239,7 +220,7 @@ class RSRCParser:
             length = self._u32()
             data = self.data[self.off : self.off + length]
             self.off += length
-            self.off += (4 - length % 4) % 4  # 对齐填充
+            self.off += (4 - length % 4) % 4  
             return data
 
         elif vtype in (VT_PACKED_INT32_ARRAY,):
@@ -328,15 +309,18 @@ class RSRCParser:
             return self._u32()
 
         else:
-            # 未知类型 - 无法安全跳过，返回错误标记
             return f"__UNKNOWN_VARIANT_{vtype}__"
 
     def parse(self) -> dict:
-        """解析 RSRC 文件，返回所有内部资源及其属性"""
         if self.data[:4] != b"RSRC":
             return {}
 
-        # 头部
+        try:
+            return self._parse_inner()
+        except (struct.error, IndexError, UnicodeDecodeError):
+            return {}
+
+    def _parse_inner(self) -> dict:
         self.off = 4
         self.big_endian = bool(self._u32())
         self.use_real64 = bool(self._u32())
@@ -345,40 +329,33 @@ class RSRCParser:
         self.format_version = self._u32()
         self.resource_type = self._read_string()
 
-        # 元数据偏移 (uint64)
         self._u64()
 
-        # 标志 (format_version >= 3)
         if self.format_version >= 3:
             self.flags = self._u32()
 
-        # UID (如果有 UID 标志)
         if self.flags & FORMAT_FLAG_UIDS:
             self._u64()
 
-        # 脚本类 (如果有标志)
         if self.flags & FORMAT_FLAG_SCRIPT_CLASS:
             self._read_string()
 
-        # 保留字段
-        for _ in range(RESERVED_FIELDS):
+        reserved_count = RESERVED_FIELDS_V3 if self.format_version >= 3 else RESERVED_FIELDS_V2
+        for _ in range(reserved_count):
             self._u32()
 
-        # 字符串表
         string_count = self._u32()
         self.strings = []
         for _ in range(string_count):
             self.strings.append(self._read_string())
 
-        # 外部资源
         ext_count = self._u32()
         for _ in range(ext_count):
-            self._read_string()  # type
-            self._read_string()  # path
+            self._read_string() 
+            self._read_string()  
             if self.flags & FORMAT_FLAG_UIDS:
                 self._u64()
 
-        # 内部资源
         int_count = self._u32()
         self.internal_resources = []
         for _ in range(int_count):
@@ -386,7 +363,6 @@ class RSRCParser:
             offset = self._u64()
             self.internal_resources.append((path, offset))
 
-        # 解析每个内部资源的属性
         resources = {}
         for res_path, res_offset in self.internal_resources:
             self.off = res_offset
@@ -413,18 +389,10 @@ class RSRCParser:
 
         return resources
 
-
-# ============================================================
-# CTEX (GST2) 纹理转换
-# ============================================================
 def convert_ctex(data: bytes) -> Optional[Tuple[str, bytes]]:
-    """从 .ctex 文件中提取图片数据
-    返回 (扩展名, 图片数据) 或 None
-    """
     if len(data) < 56 or data[:4] != b"GST2":
         return None
 
-    # 搜索 WebP 签名 (RIFF + WEBP)
     pos = 0
     while True:
         pos = data.find(b"RIFF", pos)
@@ -436,32 +404,21 @@ def convert_ctex(data: bytes) -> Optional[Tuple[str, bytes]]:
                 return (".webp", data[pos : pos + size])
         pos += 1
 
-    # 搜索 PNG 签名
     png_sig = b"\x89PNG\r\n\x1a\n"
     pos = data.find(png_sig)
     if pos != -1:
-        # PNG 结束标记: IEND chunk
         iend = data.find(b"IEND", pos)
         if iend != -1:
-            end = iend + 8  # IEND (4) + CRC (4)
+            end = iend + 8  
             return (".png", data[pos:end])
-        # 退化：提取到文件末尾
         return (".png", data[pos:])
 
     return None
 
-
-# ============================================================
-# Godot 3 STEX 纹理转换
-# ============================================================
 def convert_stex(data: bytes) -> Optional[Tuple[str, bytes]]:
-    """从 Godot 3 .stex 文件中提取图片数据"""
     if len(data) < 36:
         return None
 
-    # Godot 3 STEX: 标志位在 offset 28 (data_format)
-    # PNG 数据通常在 offset 32 之后
-    # 先尝试搜索 PNG 签名
     png_sig = b"\x89PNG\r\n\x1a\n"
     pos = data.find(png_sig)
     if pos != -1:
@@ -470,7 +427,6 @@ def convert_stex(data: bytes) -> Optional[Tuple[str, bytes]]:
             return (".png", data[pos : iend + 8])
         return (".png", data[pos:])
 
-    # 搜索 WebP
     pos = data.find(b"RIFF")
     if pos != -1 and pos + 12 <= len(data) and data[pos + 8 : pos + 12] == b"WEBP":
         size = struct.unpack_from("<I", data, pos + 4)[0] + 8
@@ -479,10 +435,6 @@ def convert_stex(data: bytes) -> Optional[Tuple[str, bytes]]:
 
     return None
 
-
-# ============================================================
-# OGGVorbisStr → OGG 转换
-# ============================================================
 def _make_ogg_page(
     packets: List[bytes],
     granule: int,
@@ -491,8 +443,6 @@ def _make_ogg_page(
     bos: bool = False,
     eos: bool = False,
 ) -> bytes:
-    """构建一个 OGG 页面"""
-    # 构建分段表
     segments = []
     for pkt in packets:
         pkt_len = len(pkt)
@@ -502,7 +452,6 @@ def _make_ogg_page(
         segments.append(pkt_len)
 
     if len(segments) > 255:
-        # 超过 255 段需要分页，这里简化处理
         segments = segments[:255]
 
     header_type = 0
@@ -511,35 +460,34 @@ def _make_ogg_page(
     if eos:
         header_type |= 0x04
 
-    # OGG 页头 (27 字节) + 分段表
     header = b"OggS"
-    header += struct.pack("<B", 0)  # version
+    header += struct.pack("<B", 0)  
     header += struct.pack("<B", header_type)
     header += struct.pack("<q", granule)
     header += struct.pack("<I", serial)
     header += struct.pack("<I", seq_no)
-    header += struct.pack("<I", 0)  # CRC 占位
+    header += struct.pack("<I", 0)  
     header += struct.pack("<B", len(segments))
     header += bytes(segments)
 
     body = b"".join(packets)
     page = header + body
 
-    # 计算并写入 CRC
     crc_val = ogg_crc(page)
     page = page[:22] + struct.pack("<I", crc_val) + page[26:]
     return page
 
 
 def convert_oggvorbisstr(data: bytes) -> Optional[bytes]:
-    """从 .oggvorbisstr (RSRC) 中重建 OGG Vorbis 文件"""
     if data[:4] != b"RSRC":
         return None
 
-    parser = RSRCParser(data)
-    resources = parser.parse()
+    try:
+        parser = RSRCParser(data)
+        resources = parser.parse()
+    except Exception:
+        return _fallback_ogg_extract(data)
 
-    # 查找 OggPacketSequence 资源
     packet_data = None
     granule_positions = None
     sampling_rate = None
@@ -554,10 +502,8 @@ def convert_oggvorbisstr(data: bytes) -> Optional[bytes]:
             sampling_rate = props.get("sampling_rate")
 
     if not packet_data or not isinstance(packet_data, list):
-        # 回退方案: 尝试直接扫描 vorbis 头部
         return _fallback_ogg_extract(data)
 
-    # 从 vorbis 识别头提取采样率（更可靠）
     if packet_data and len(packet_data) > 0:
         first_page = packet_data[0]
         if isinstance(first_page, list) and len(first_page) > 0:
@@ -565,21 +511,18 @@ def convert_oggvorbisstr(data: bytes) -> Optional[bytes]:
             if isinstance(id_pkt, bytes) and len(id_pkt) >= 16 and id_pkt[1:7] == b"vorbis":
                 sampling_rate = struct.unpack_from("<I", id_pkt, 12)[0]
 
-    # 如果没有 granule_positions，创建默认值
     if not isinstance(granule_positions, list):
         granule_positions = [0] * len(packet_data)
         if len(granule_positions) > 0:
-            granule_positions[-1] = -1  # 最后一页用 -1 (未知)
+            granule_positions[-1] = -1  
 
-    # 构建 OGG 文件
-    serial = 0x47444F54  # "GDOT"
+    serial = 0x47444F54 
     ogg_data = b""
 
     for page_idx, page_packets in enumerate(packet_data):
         if not isinstance(page_packets, list):
             continue
 
-        # 过滤有效的字节数据包
         valid_packets = [p for p in page_packets if isinstance(p, bytes) and len(p) > 0]
         if not valid_packets:
             continue
@@ -593,7 +536,6 @@ def convert_oggvorbisstr(data: bytes) -> Optional[bytes]:
         bos = page_idx == 0
         eos = page_idx == len(packet_data) - 1
 
-        # 检查是否需要分割大页
         total_segments = 0
         for pkt in valid_packets:
             total_segments += (len(pkt) // 255) + 1
@@ -602,7 +544,6 @@ def convert_oggvorbisstr(data: bytes) -> Optional[bytes]:
             page = _make_ogg_page(valid_packets, granule, serial, page_idx, bos, eos)
             ogg_data += page
         else:
-            # 大页需要分割为多个 OGG 页
             current_packets = []
             current_segments = 0
             sub_seq = page_idx
@@ -636,26 +577,20 @@ def convert_oggvorbisstr(data: bytes) -> Optional[bytes]:
 
 
 def _fallback_ogg_extract(data: bytes) -> Optional[bytes]:
-    """回退方案: 扫描 RSRC 数据中的 vorbis 包并重建 OGG"""
-    # 搜索 vorbis 识别头 (\x01vorbis)
     id_pos = data.find(b"\x01vorbis")
     if id_pos == -1:
         return None
 
-    # 向前找到 PackedByteArray 的大小字段
-    # 典型模式: [31 00 00 00] [size: uint32] [01 76 6f 72 62 69 73 ...]
     packets = []
     pos = id_pos
 
-    # 提取识别头 (从 \x01vorbis 向前找大小)
     size_off = id_pos - 4
     if size_off >= 0:
         id_size = struct.unpack_from("<I", data, size_off)[0]
-        if 16 < id_size < 256:  # 合理的识别头大小
+        if 16 < id_size < 256:  
             id_header = data[id_pos : id_pos + id_size]
             packets.append(id_header)
 
-    # 搜索注释头 (\x03vorbis)
     comment_pos = data.find(b"\x03vorbis", id_pos + 7)
     if comment_pos != -1:
         size_off = comment_pos - 4
@@ -664,7 +599,6 @@ def _fallback_ogg_extract(data: bytes) -> Optional[bytes]:
             if 8 < c_size < 65536:
                 packets.append(data[comment_pos : comment_pos + c_size])
 
-    # 搜索码本头 (\x05vorbis)
     setup_pos = data.find(b"\x05vorbis", comment_pos + 7 if comment_pos != -1 else id_pos + 7)
     if setup_pos != -1:
         size_off = setup_pos - 4
@@ -676,11 +610,9 @@ def _fallback_ogg_extract(data: bytes) -> Optional[bytes]:
     if len(packets) < 3:
         return None
 
-    # 从识别头提取采样率
     if len(packets[0]) >= 16:
         sampling_rate = struct.unpack_from("<I", packets[0], 12)[0]
 
-    # 构建最小 OGG: 3 个头部页 (无音频数据)
     serial = 0x47444F54
     ogg_data = b""
     ogg_data += _make_ogg_page([packets[0]], 0, serial, 0, bos=True)
@@ -688,15 +620,10 @@ def _fallback_ogg_extract(data: bytes) -> Optional[bytes]:
 
     return ogg_data
 
-
-# ============================================================
-# Sample → WAV 转换
-# ============================================================
 WAVE_FORMAT_PCM = 1
 
 
 def convert_sample(data: bytes) -> Optional[bytes]:
-    """从 .sample (RSRC AudioStreamWAV) 中提取为 WAV 文件"""
     if data[:4] != b"RSRC":
         return None
 
@@ -704,7 +631,7 @@ def convert_sample(data: bytes) -> Optional[bytes]:
     resources = parser.parse()
 
     audio_data = None
-    fmt = 0  # 0=8bit, 1=16bit, 2=IMA_ADPCM, 3=QOA
+    fmt = 0  
     mix_rate = 44100
     stereo = False
     loop_mode = 0
@@ -729,19 +656,15 @@ def convert_sample(data: bytes) -> Optional[bytes]:
     channels = 2 if stereo else 1
 
     if fmt == 0:
-        # 8-bit PCM
         bits_per_sample = 8
         wav_data = audio_data
     elif fmt == 1:
-        # 16-bit PCM
         bits_per_sample = 16
         wav_data = audio_data
     elif fmt == 2:
-        # IMA-ADPCM → 解码为 16-bit PCM
         bits_per_sample = 16
         wav_data = _decode_ima_adpcm(audio_data, stereo)
     else:
-        # 未知格式，原样保存
         bits_per_sample = 16
         wav_data = audio_data
 
@@ -749,7 +672,6 @@ def convert_sample(data: bytes) -> Optional[bytes]:
 
 
 def _build_wav(audio_data: bytes, channels: int, sample_rate: int, bits_per_sample: int) -> bytes:
-    """构建 WAV 文件"""
     byte_rate = sample_rate * channels * bits_per_sample // 8
     block_align = channels * bits_per_sample // 8
     data_size = len(audio_data)
@@ -757,16 +679,14 @@ def _build_wav(audio_data: bytes, channels: int, sample_rate: int, bits_per_samp
     wav = b"RIFF"
     wav += struct.pack("<I", 36 + data_size)
     wav += b"WAVE"
-    # fmt chunk
     wav += b"fmt "
-    wav += struct.pack("<I", 16)  # chunk size
+    wav += struct.pack("<I", 16)  
     wav += struct.pack("<H", WAVE_FORMAT_PCM)
     wav += struct.pack("<H", channels)
     wav += struct.pack("<I", sample_rate)
     wav += struct.pack("<I", byte_rate)
     wav += struct.pack("<H", block_align)
     wav += struct.pack("<H", bits_per_sample)
-    # data chunk
     wav += b"data"
     wav += struct.pack("<I", data_size)
     wav += audio_data
@@ -775,7 +695,6 @@ def _build_wav(audio_data: bytes, channels: int, sample_rate: int, bits_per_samp
 
 
 def _decode_ima_adpcm(data: bytes, stereo: bool) -> bytes:
-    """解码 Godot IMA-ADPCM 为 16-bit PCM"""
     ima_step_table = [
         7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31,
         34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
@@ -789,9 +708,6 @@ def _decode_ima_adpcm(data: bytes, stereo: bool) -> bytes:
 
     channels = 2 if stereo else 1
     out = bytearray()
-
-    # Godot IMA-ADPCM 格式: 每 4096+4 字节为一个块 (4 字节头 + 4096 字节数据)
-    # 头部: predictor(int16) + step_index(int16)
     offset = 0
 
     for ch in range(channels):
@@ -837,7 +753,6 @@ def _decode_ima_adpcm(data: bytes, stereo: bool) -> bytes:
                 left = ch_out
             else:
                 right = ch_out
-                # 交错左右声道
                 for i in range(0, min(len(left), len(right)), 2):
                     out += left[i : i + 2]
                     out += right[i : i + 2]
@@ -848,18 +763,12 @@ def _decode_ima_adpcm(data: bytes, stereo: bool) -> bytes:
 
     return bytes(out)
 
-
-# ============================================================
-# 便捷函数
-# ============================================================
 def detect_resource_type(data: bytes) -> str:
-    """检测 Godot 资源文件类型"""
     if data[:4] == b"GST2":
         return "ctex"
     if data[:4] == b"GDST":
-        return "stex"  # Godot 3 StreamTexture
+        return "stex"  
     if data[:4] == b"RSRC":
-        # 进一步检测 RSRC 子类型
         type_pos = data.find(b"AudioStreamOggVorbis")
         if type_pos != -1 and type_pos < 128:
             return "oggvorbisstr"
@@ -877,9 +786,6 @@ def detect_resource_type(data: bytes) -> str:
 
 
 def convert_resource(data: bytes, original_ext: str = "") -> Optional[Tuple[str, bytes]]:
-    """自动检测并转换 Godot 资源文件
-    返回 (新扩展名, 转换后数据) 或 None
-    """
     res_type = detect_resource_type(data)
 
     if res_type == "ctex":

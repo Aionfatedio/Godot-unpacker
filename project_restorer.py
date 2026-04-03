@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Godot 项目结构还原模块 - 通过 .import 映射还原原始目录结构"""
-
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,15 +7,13 @@ from resource_converter import convert_resource
 
 @dataclass
 class ImportMapping:
-    original_path: str    # 原始资源路径 (如 res://assets/image.png)
-    imported_path: str    # 导入后路径 (如 res://.godot/imported/image.png-xxxx.ctex)
-    importer: str         # 导入器类型 (texture, oggvorbisstr, wav, etc.)
-    resource_type: str    # 资源类型
+    original_path: str    
+    imported_path: str    
+    importer: str         
+    resource_type: str    
 
 
 class ProjectRestorer:
-    """还原 Godot 项目的原始目录结构"""
-
     def __init__(self, project_dir: str):
         self.project_dir = Path(project_dir)
         self.mappings: List[ImportMapping] = []
@@ -32,7 +26,6 @@ class ProjectRestorer:
         }
 
     def scan_imports(self) -> int:
-        """扫描所有 .import 文件，构建映射表"""
         self.mappings = []
 
         for root, dirs, files in os.walk(self.project_dir):
@@ -46,7 +39,6 @@ class ProjectRestorer:
         return len(self.mappings)
 
     def scan_remaps(self) -> Dict[str, str]:
-        """扫描 .remap 文件"""
         remaps = {}
         for root, dirs, files in os.walk(self.project_dir):
             for fname in files:
@@ -58,7 +50,6 @@ class ProjectRestorer:
         return remaps
 
     def _parse_import_file(self, path: Path) -> Optional[ImportMapping]:
-        """解析单个 .import 文件"""
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -88,14 +79,11 @@ class ProjectRestorer:
             elif line.startswith("path="):
                 imported_path = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("path.") and not imported_path:
-                # path.s3tc, path.etc2 等变体
                 imported_path = line.split("=", 1)[1].strip().strip('"')
 
         if not imported_path:
             return None
 
-        # 原始路径从 .import 文件的位置推导
-        # 例如: assets/image.png.import → 原始文件是 assets/image.png
         rel = path.relative_to(self.project_dir)
         original_rel = str(rel).replace("\\", "/")
         if original_rel.endswith(".import"):
@@ -110,7 +98,6 @@ class ProjectRestorer:
         )
 
     def _parse_remap_file(self, path: Path) -> Optional[str]:
-        """解析 .remap 文件，返回目标路径"""
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -123,7 +110,6 @@ class ProjectRestorer:
         return None
 
     def _res_to_local(self, res_path: str) -> Path:
-        """将 res:// 路径转换为本地文件系统路径"""
         if res_path.startswith("res://"):
             rel = res_path[6:]
         else:
@@ -131,12 +117,6 @@ class ProjectRestorer:
         return self.project_dir / rel.replace("/", os.sep)
 
     def restore_all(self, output_dir: Optional[str] = None, callback=None) -> dict:
-        """执行完整的项目还原
-
-        Args:
-            output_dir: 输出目录（None 表示原地还原）
-            callback: 进度回调 callback(current, total, path, status)
-        """
         if output_dir:
             out_base = Path(output_dir)
         else:
@@ -145,7 +125,6 @@ class ProjectRestorer:
         total = len(self.mappings)
 
         for i, mapping in enumerate(self.mappings):
-            # 计算输出路径
             if mapping.original_path.startswith("res://"):
                 rel = mapping.original_path[6:]
             else:
@@ -160,8 +139,6 @@ class ProjectRestorer:
         return self.stats
 
     def _restore_single(self, mapping: ImportMapping, out_path: Path) -> str:
-        """还原单个资源文件"""
-        # 找到导入后的文件
         imported_local = self._res_to_local(mapping.imported_path)
 
         if not imported_local.exists():
@@ -174,16 +151,11 @@ class ProjectRestorer:
             self.stats["failed"] += 1
             return "读取失败"
 
-        # 尝试转换
         result = convert_resource(data, out_path.suffix)
 
         if result:
             ext, converted_data = result
-            # 确定最终输出路径
             final_path = out_path
-            # 如果原始扩展名和转换后不同，保持原始扩展名
-            # 例如 image.png → 仍然输出为 image.png（即使内部是 WebP）
-            # 但如果是 .ogg → .ogg，.wav → .wav 则保持
 
             final_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -202,7 +174,6 @@ class ProjectRestorer:
 
             return "已转换"
         else:
-            # 无法转换，复制原始文件
             out_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 out_path.write_bytes(data)
@@ -211,14 +182,11 @@ class ProjectRestorer:
                 return "写入失败"
 
             self.stats["skipped"] += 1
-            return "原样复制"
+            return "复制"
 
     def cleanup(self, target_dir: Optional[str] = None):
-        """清理冗余文件"""
         base = Path(target_dir) if target_dir else self.project_dir
-
         removed = 0
-        # 移除 .import 文件
         for root, dirs, files in os.walk(base):
             for fname in files:
                 if fname.endswith(".import") or fname.endswith(".remap"):
@@ -229,7 +197,6 @@ class ProjectRestorer:
                     except OSError:
                         pass
 
-        # 移除 .godot/imported 目录
         imported_dir = base / ".godot" / "imported"
         if imported_dir.exists():
             import shutil
@@ -239,7 +206,6 @@ class ProjectRestorer:
             except OSError:
                 pass
 
-        # 移除 .godot/exported 目录
         exported_dir = base / ".godot" / "exported"
         if exported_dir.exists():
             import shutil
@@ -251,12 +217,7 @@ class ProjectRestorer:
 
         return removed
 
-
-# ============================================================
-# 快捷提取函数
-# ============================================================
 def extract_all_images(project_dir: str, output_dir: str, callback=None) -> dict:
-    """一键提取项目中所有图片资源"""
     restorer = ProjectRestorer(project_dir)
     count = restorer.scan_imports()
 
@@ -282,7 +243,6 @@ def extract_all_images(project_dir: str, output_dir: str, callback=None) -> dict
         result = convert_resource(data)
         if result:
             ext, converted = result
-            # 使用原始文件名
             if mapping.original_path.startswith("res://"):
                 rel = mapping.original_path[6:]
             else:
@@ -304,7 +264,6 @@ def extract_all_images(project_dir: str, output_dir: str, callback=None) -> dict
 
 
 def extract_all_audio(project_dir: str, output_dir: str, callback=None) -> dict:
-    """一键提取项目中所有音频资源"""
     restorer = ProjectRestorer(project_dir)
     count = restorer.scan_imports()
 
