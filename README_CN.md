@@ -29,7 +29,7 @@ Godot 引擎 `.pck` / `.exe` 解封包脚本，支持 **Godot 3**（PCK v1）和
 ## 快速开始
 
 ```bash
-git clone https://github.com/Aionfatedio/example.git
+git clone https://github.com/Aionfatedio/Godot-unpacker.git
 cd Godot-unpacker
 
 # 传入游戏文件夹
