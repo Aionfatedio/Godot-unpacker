@@ -1,31 +1,17 @@
 # Godot Unpacker
-[简体中文](README_CN.md)
+English [简体中文](README_CN.md)
 
 Godot Engine `.pck` / `.exe` unpacking script, supporting **Godot 3** (PCK v1) and **Godot 4** (PCK v2).
 
 ## Features
 
-- **PCK Unpacking** — Extract all data from `.pck` or `.exe` file PCK data
-- **Format Conversion** — Automatically convert Godot-proprietary formats to common formats:
+- Extract all data from `.pck` or `.exe` file PCK data
+- Automatically convert Godot-proprietary formats to common formats:
   - `.ctex` (GST2) / `.stex` (GDST) → `.png` / `.webp`
   - `.oggvorbisstr` (RSRC) → `.ogg`
   - `.sample` (RSRC AudioStreamWAV) → `.wav` (supports IMA-ADPCM decoding)
-- **Batch Extraction** — Extract only image or audio resources
-- **Project Structure Restoration** — Reconstruct original directory structures via `.import` mapping files
-
-### Supported Formats
-
-> **Experimental support for PCK v3 (Godot 4.5+)**
-
-| **Godot Format** | **Magic Number** | **Description**                          | **Output Format** |
-| ---------------- | ---------------- | ---------------------------------------- | ----------------- |
-| PCK v1           | `GDPC`           | Godot 3 Resource Pack                    | Extracted files   |
-| PCK v2           | `GDPC`           | Godot 4 Resource Pack                    | Extracted files   |
-| CTEX             | `GST2`           | Godot 4 CompressedTexture2D              | `.png` / `.webp`  |
-| STEX             | `GDST`           | Godot 3 StreamTexture                    | `.png` / `.webp`  |
-| RSRC (OGG)       | `RSRC`           | AudioStreamOggVorbis / OggPacketSequence | `.ogg`            |
-| RSRC (WAV)       | `RSRC`           | AudioStreamWAV / AudioStreamSample       | `.wav`            |
-| Embedded PCK     | —                | PCK data appended to the end of `.exe`   | Auto-detected     |
+- Extract only image or audio resources
+- Reconstruct original directory structures via `.import` mapping files
 
 ## Quick Start
 
@@ -48,8 +34,6 @@ python godot_unpacker.py full game.pck -o output/
 ```bash
 python godot_unpacker.py "path/to/godot/game/"
 ```
-
-Pass in the game path; the tool will automatically scan for `.pck` / `.exe` files and execute unpacking after confirmation.
 
 **Output Structure:**
 
