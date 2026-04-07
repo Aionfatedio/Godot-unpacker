@@ -2,29 +2,19 @@
 
 Godot 引擎 `.pck` / `.exe` 解封包脚本，支持 **Godot 3**（PCK v1）和 **Godot 4**（PCK v2）。
 
+[English](README.md) 简体中文
+
 ## 功能
 
-- **PCK 解包** — 从 `.pck` 或 `.exe` 文件的 PCK 数据中提取全部数据
-- **格式转换** — 自动将 Godot 专有格式转换为通用格式：
+- 从 .pck 或 .exe 文件的 PCK 数据中提取资源文件
+- 支持将 Godot 格式转换为通用格式：
   - `.ctex`（GST2）/ `.stex`（GDST）&rarr; `.png` / `.webp`
   - `.oggvorbisstr`（RSRC）&rarr; `.ogg`
   - `.sample`（RSRC AudioStreamWAV）&rarr; `.wav`（支持 IMA-ADPCM 解码）
-- **批量提取** — 仅提取图片或音频资源
-- **项目结构还原** — 通过 `.import` 映射文件重建原始目录结构
-
-### 支持的格式
+- 支持提取图片或音频资源
+- 可通过 .import 映射文件重建原始目录结构
 
 > 实验性支持 PCK v3（Godot 4.5+）
-
-| Godot 格式 | 魔数   | 说明                                     | 输出格式         |
-| ---------- | ------ | ---------------------------------------- | ---------------- |
-| PCK v1     | `GDPC` | Godot 3 资源包                           | 提取的文件       |
-| PCK v2     | `GDPC` | Godot 4 资源包                           | 提取的文件       |
-| CTEX       | `GST2` | Godot 4 CompressedTexture2D              | `.png` / `.webp` |
-| STEX       | `GDST` | Godot 3 StreamTexture                    | `.png` / `.webp` |
-| RSRC (OGG) | `RSRC` | AudioStreamOggVorbis / OggPacketSequence | `.ogg`           |
-| RSRC (WAV) | `RSRC` | AudioStreamWAV / AudioStreamSample       | `.wav`           |
-| 内嵌 PCK   | —      | 附加在 `.exe` 末尾的 PCK 数据            | 自动检测         |
 
 ## 快速开始
 
@@ -47,8 +37,6 @@ python godot_unpacker.py full game.pck -o output/
 ```bash
 python godot_unpacker.py "path/to/godot/game/"
 ```
-
-传入游戏路径，工具会自动扫描 `.pck` / `.exe` 文件，并在确认后执行解包。
 
 **输出结构：**
 
