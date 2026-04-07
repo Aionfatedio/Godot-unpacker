@@ -1,7 +1,7 @@
 # Godot Unpacker
 **English** [简体中文](README_CN.md)
 
-Godot Engine `.pck` / `.exe` unpacking script, supporting **Godot 3** (PCK v1) and **Godot 4** (PCK v2).
+Godot Engine `.pck` / `.exe` unpacking script.
 
 ## Features
 
