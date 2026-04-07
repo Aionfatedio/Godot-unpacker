@@ -1,8 +1,7 @@
 # Godot Unpacker
+[English](README.md)  **简体中文**
 
 Godot 引擎 `.pck` / `.exe` 解封包脚本，支持 **Godot 3**（PCK v1）和 **Godot 4**（PCK v2）。
-
-[English](README.md) 简体中文
 
 ## 功能
 
